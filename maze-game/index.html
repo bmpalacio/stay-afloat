@@ -322,7 +322,7 @@
 <body>
   <h1>Stay ALIVE.</h1>
   <p class="subtitle instruction-top">Stay alive as long as you can. The game gets harder over time.</p>
-  <p class="subtitle">Tap or click the game area: <strong>top</strong> = up, <strong>left/right</strong> = move. Or use arrow keys. Do not hit the ground or fly too high!</p>
+  <p class="subtitle">Tap or click the game area to go <strong>up</strong>; use the arrow buttons for left/right. Or use keyboard arrows. Do not hit the ground or fly too high! When you lose, tap the game area to try again.</p>
   <div class="legend" id="legend">
     <span class="legend-item safe"><span class="legend-dot safe" id="legendSafe">☁️</span> <span id="legendSafeText">Safe</span></span>
     <span class="legend-item avoid"><span class="legend-dot avoid-plane" id="legendAvoid1">✈️</span> <span id="legendAvoid1Text">—</span></span>
@@ -330,9 +330,9 @@
     <span class="legend-item avoid"><span class="legend-dot avoid-other" id="legendAvoid3">🪁</span> <span id="legendAvoid3Text">— avoid!</span></span>
   </div>
   <div class="game-card">
-    <div class="maze-viewport theme-sky" id="mazeViewport">
+    <div class="maze-viewport theme-ocean" id="mazeViewport">
       <div class="maze-strip" id="mazeStrip"></div>
-      <div class="bee" id="bee">🐝</div>
+      <div class="bee" id="bee">🐟</div>
     </div>
     <div class="touch-controls" id="touchControls" aria-label="Touch controls">
       <button type="button" class="touch-btn touch-up" id="btnUp" aria-label="Fly up">↑</button>
@@ -370,7 +370,7 @@
     const COLUMN_WIDTH_PX = 40;
     const BEE_WIDTH_PX = 36;
     const BEE_HORIZONTAL_SPEED = 180;
-    const BASE_SCROLL_SPEED = 60;
+    const BASE_SCROLL_SPEED = 72;
     const GRAVITY_PX_PER_SEC = 105;
     const LIFT_PX_PER_SEC = 550;
     const VIEWPORT_HEIGHT_PX = 200;
@@ -405,7 +405,8 @@
     let scrollOffsetPx = 0;
     let lastFrameTime = 0;
     let rafId = null;
-    let currentTheme = 0;
+    const OCEAN_THEME = 3;
+    let currentTheme = OCEAN_THEME;
 
     function generateColumn() {
       const col = Array(ROWS).fill(OBSTACLE_SKY);
@@ -592,7 +593,7 @@
     }
 
     function getScrollSpeed(elapsedSec) {
-      return BASE_SCROLL_SPEED * Math.pow(1.1, Math.floor(elapsedSec / 10));
+      return BASE_SCROLL_SPEED * Math.pow(1.15, 1 + Math.floor(elapsedSec / 5));
     }
 
     function updateLegend(themeId) {
@@ -648,12 +649,14 @@
     }
 
     function updateStripFromColumns() {
-      for (let c = 0; c < NUM_COLUMNS; c++) {
-        const colDiv = columnDivs[c];
-        if (!colDiv || !columns[c]) continue;
+      const strip = document.getElementById('mazeStrip');
+      if (!strip) return;
+      for (let i = 0; i < strip.children.length && i < NUM_COLUMNS; i++) {
+        const colDiv = strip.children[i];
+        if (!colDiv || !columns[i]) continue;
         const cells = colDiv.querySelectorAll('.cell');
         for (let r = 0; r < ROWS; r++) {
-          if (cells[r]) setCellContent(cells[r], columns[c][r]);
+          if (cells[r]) setCellContent(cells[r], columns[i][r]);
         }
       }
     }
@@ -699,9 +702,6 @@
       }
 
       const elapsed = timerStart != null ? (Date.now() - timerStart) / 1000 : 0;
-      const themeSlot = Math.floor(elapsed / 25) % 6;
-      const newTheme = themeSequence[themeSlot] !== undefined ? themeSequence[themeSlot] : 0;
-      if (newTheme !== currentTheme) applyTheme(newTheme);
 
       const scrollSpeed = getScrollSpeed(elapsed);
       scrollOffsetPx += scrollSpeed * dt;
@@ -724,28 +724,33 @@
       document.getElementById('mazeStrip').style.transform = 'translateX(' + (-scrollOffsetPx) + 'px)';
       updateBeePosition();
 
-      if (elapsed >= 2) {
-        const beeLeft = beeX;
-        const beeRight = beeX + BEE_WIDTH_PX;
-        const beeTop = beeY;
-        const beeBottom = beeY + BEE_HEIGHT_PX;
-        const OBSTACLE_INSET = 10;
-        for (let i = 0; i < NUM_COLUMNS; i++) {
-          const cellLeft = i * COLUMN_WIDTH_PX - scrollOffsetPx;
-          const cellRight = (i + 1) * COLUMN_WIDTH_PX - scrollOffsetPx;
-          const cellInnerLeft = cellLeft + OBSTACLE_INSET;
-          const cellInnerRight = cellRight - OBSTACLE_INSET;
-          for (let row = 0; row < ROWS; row++) {
-            if (!isDeadlyObstacle(columns[i] ? columns[i][row] : OBSTACLE_SKY)) continue;
-            const cellTop = row * ROW_HEIGHT_PX;
-            const cellBottom = (row + 1) * ROW_HEIGHT_PX;
-            const cellInnerTop = cellTop + OBSTACLE_INSET;
-            const cellInnerBottom = cellBottom - OBSTACLE_INSET;
-            if (cellInnerRight <= cellInnerLeft || cellInnerBottom <= cellInnerTop) continue;
-            if (beeLeft < cellInnerRight && beeRight > cellInnerLeft && beeTop < cellInnerBottom && beeBottom > cellInnerTop) {
-              loseGame();
-              return;
-            }
+      if (elapsed < 2) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const beeLeft = beeX;
+      const beeRight = beeX + BEE_WIDTH_PX;
+      const beeTop = beeY;
+      const beeBottom = beeY + BEE_HEIGHT_PX;
+      const colStart = Math.max(0, Math.min(NUM_COLUMNS - 1, Math.floor((beeLeft + scrollOffsetPx) / COLUMN_WIDTH_PX)));
+      const colEnd = Math.max(0, Math.min(NUM_COLUMNS - 1, Math.floor((beeRight - 0.01 + scrollOffsetPx) / COLUMN_WIDTH_PX)));
+      const INSET_X = 10;
+      const INSET_Y = 4;
+      const MIN_OVERLAP = 3;
+      for (let i = colStart; i <= colEnd; i++) {
+        const cellLeft = i * COLUMN_WIDTH_PX - scrollOffsetPx;
+        const cellRight = (i + 1) * COLUMN_WIDTH_PX - scrollOffsetPx;
+        for (let row = 0; row < ROWS; row++) {
+          if (!isDeadlyObstacle(columns[i] ? columns[i][row] : OBSTACLE_SKY)) continue;
+          const cellTop = row * ROW_HEIGHT_PX;
+          const cellBottom = (row + 1) * ROW_HEIGHT_PX;
+          const oL = Math.max(beeLeft, cellLeft + INSET_X);
+          const oR = Math.min(beeRight, cellRight - INSET_X);
+          const oT = Math.max(beeTop, cellTop + INSET_Y);
+          const oB = Math.min(beeBottom, cellBottom - INSET_Y);
+          if (oR > oL && oB > oT && (oR - oL) >= MIN_OVERLAP && (oB - oT) >= MIN_OVERLAP) {
+            loseGame();
+            return;
           }
         }
       }
@@ -800,8 +805,7 @@
       leftHeld = false;
       rightHeld = false;
       scrollOffsetPx = 0;
-      shuffleThemes();
-      currentTheme = themeSequence[0] !== undefined ? themeSequence[0] : 0;
+      currentTheme = OCEAN_THEME;
       initColumns();
       document.getElementById('message').textContent = '';
       document.getElementById('message').classList.remove('lose');
@@ -843,8 +847,7 @@
       if (e.key === 'ArrowRight') rightHeld = false;
     });
 
-    shuffleThemes();
-    currentTheme = themeSequence[0] !== undefined ? themeSequence[0] : 0;
+    currentTheme = OCEAN_THEME;
     initColumns();
     renderBestTimes();
     updateBestDisplay();
@@ -872,23 +875,20 @@
 
     function getViewportPointerZone(clientX, clientY) {
       const vp = document.getElementById('mazeViewport');
-      if (!vp) return { up: false, left: false, right: false };
+      if (!vp) return { up: false };
       const rect = vp.getBoundingClientRect();
-      const relX = (clientX - rect.left) / rect.width;
       const relY = (clientY - rect.top) / rect.height;
-      return {
-        up: relY < 0.4,
-        left: relX < 0.33,
-        right: relX > 0.67
-      };
+      return { up: relY < 0.4 };
     }
     function viewportPointerDown(e) {
+      if (gameState === 'lost') {
+        playAgain();
+        return;
+      }
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
       const z = getViewportPointerZone(x, y);
       if (z.up) { upHeld = true; if (gameState === 'playing') { startTimer(); startScroll(); } }
-      if (z.left) leftHeld = true;
-      if (z.right) rightHeld = true;
     }
     function viewportPointerUp() {
       upHeld = false;
