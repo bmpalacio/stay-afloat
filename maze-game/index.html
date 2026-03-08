@@ -873,22 +873,13 @@
     document.getElementById('btnRight').addEventListener('touchstart', (e) => { e.preventDefault(); rightHeld = true; });
     document.getElementById('btnRight').addEventListener('touchend', (e) => { e.preventDefault(); rightHeld = false; });
 
-    function getViewportPointerZone(clientX, clientY) {
-      const vp = document.getElementById('mazeViewport');
-      if (!vp) return { up: false };
-      const rect = vp.getBoundingClientRect();
-      const relY = (clientY - rect.top) / rect.height;
-      return { up: relY < 0.4 };
-    }
     function viewportPointerDown(e) {
       if (gameState === 'lost') {
         playAgain();
         return;
       }
-      const x = e.touches ? e.touches[0].clientX : e.clientX;
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      const z = getViewportPointerZone(x, y);
-      if (z.up) { upHeld = true; if (gameState === 'playing') { startTimer(); startScroll(); } }
+      upHeld = true;
+      if (gameState === 'playing') { startTimer(); startScroll(); }
     }
     function viewportPointerUp() {
       upHeld = false;
