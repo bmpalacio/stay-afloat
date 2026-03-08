@@ -81,6 +81,9 @@
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
       transition: background 3.5s ease-in-out;
       touch-action: manipulation;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .maze-viewport.theme-sky {
       background: linear-gradient(180deg, #5dade2 0%, #85c1e9 25%, #aed6f1 55%, #d6eaf8 85%, #ebf5fb 100%);
@@ -319,7 +322,7 @@
 <body>
   <h1>Stay ALIVE.</h1>
   <p class="subtitle instruction-top">Stay alive as long as you can. The game gets harder over time.</p>
-  <p class="subtitle">Use <strong>↑</strong> <strong>←</strong> <strong>→</strong> (or tap buttons below on mobile). Do not hit the ground or fly too high!</p>
+  <p class="subtitle">Tap or click the game area: <strong>top</strong> = up, <strong>left/right</strong> = move. Or use arrow keys. Do not hit the ground or fly too high!</p>
   <div class="legend" id="legend">
     <span class="legend-item safe"><span class="legend-dot safe" id="legendSafe">☁️</span> <span id="legendSafeText">Safe</span></span>
     <span class="legend-item avoid"><span class="legend-dot avoid-plane" id="legendAvoid1">✈️</span> <span id="legendAvoid1Text">—</span></span>
@@ -718,27 +721,35 @@
         }
       }
 
-      const beeCenterY = beeY + BEE_HEIGHT_PX / 2;
-      const beeCenterX = beeX + BEE_WIDTH_PX / 2;
-      const beeRow = Math.min(ROWS - 1, Math.max(0, Math.floor(beeCenterY / ROW_HEIGHT_PX)));
-      const stripWidth = NUM_COLUMNS * COLUMN_WIDTH_PX;
-      const inStripX = ((beeCenterX + scrollOffsetPx) % stripWidth + stripWidth) % stripWidth;
-      const colIndex = Math.floor(inStripX / COLUMN_WIDTH_PX) % NUM_COLUMNS;
-      const inCellX = inStripX - colIndex * COLUMN_WIDTH_PX;
-      const inCellY = beeCenterY - beeRow * ROW_HEIGHT_PX;
-      const cellMidHalfMinX = COLUMN_WIDTH_PX * 0.25;
-      const cellMidHalfMaxX = COLUMN_WIDTH_PX * 0.75;
-      const cellMidHalfMinY = ROW_HEIGHT_PX * 0.25;
-      const cellMidHalfMaxY = ROW_HEIGHT_PX * 0.75;
-      const inCellCenter = (inCellX >= cellMidHalfMinX && inCellX <= cellMidHalfMaxX && inCellY >= cellMidHalfMinY && inCellY <= cellMidHalfMaxY);
-      const cellType = columns[colIndex] ? columns[colIndex][beeRow] : OBSTACLE_SKY;
-      if (elapsed >= 2 && isDeadlyObstacle(cellType) && inCellCenter) {
-        loseGame();
-        return;
-      }
-
       document.getElementById('mazeStrip').style.transform = 'translateX(' + (-scrollOffsetPx) + 'px)';
       updateBeePosition();
+
+      if (elapsed >= 2) {
+        const beeLeft = beeX;
+        const beeRight = beeX + BEE_WIDTH_PX;
+        const beeTop = beeY;
+        const beeBottom = beeY + BEE_HEIGHT_PX;
+        const OBSTACLE_INSET = 10;
+        for (let i = 0; i < NUM_COLUMNS; i++) {
+          const cellLeft = i * COLUMN_WIDTH_PX - scrollOffsetPx;
+          const cellRight = (i + 1) * COLUMN_WIDTH_PX - scrollOffsetPx;
+          const cellInnerLeft = cellLeft + OBSTACLE_INSET;
+          const cellInnerRight = cellRight - OBSTACLE_INSET;
+          for (let row = 0; row < ROWS; row++) {
+            if (!isDeadlyObstacle(columns[i] ? columns[i][row] : OBSTACLE_SKY)) continue;
+            const cellTop = row * ROW_HEIGHT_PX;
+            const cellBottom = (row + 1) * ROW_HEIGHT_PX;
+            const cellInnerTop = cellTop + OBSTACLE_INSET;
+            const cellInnerBottom = cellBottom - OBSTACLE_INSET;
+            if (cellInnerRight <= cellInnerLeft || cellInnerBottom <= cellInnerTop) continue;
+            if (beeLeft < cellInnerRight && beeRight > cellInnerLeft && beeTop < cellInnerBottom && beeBottom > cellInnerTop) {
+              loseGame();
+              return;
+            }
+          }
+        }
+      }
+
       rafId = requestAnimationFrame(tick);
     }
 
@@ -858,6 +869,40 @@
     document.getElementById('btnRight').addEventListener('mouseleave', () => rightHeld = false);
     document.getElementById('btnRight').addEventListener('touchstart', (e) => { e.preventDefault(); rightHeld = true; });
     document.getElementById('btnRight').addEventListener('touchend', (e) => { e.preventDefault(); rightHeld = false; });
+
+    function getViewportPointerZone(clientX, clientY) {
+      const vp = document.getElementById('mazeViewport');
+      if (!vp) return { up: false, left: false, right: false };
+      const rect = vp.getBoundingClientRect();
+      const relX = (clientX - rect.left) / rect.width;
+      const relY = (clientY - rect.top) / rect.height;
+      return {
+        up: relY < 0.4,
+        left: relX < 0.33,
+        right: relX > 0.67
+      };
+    }
+    function viewportPointerDown(e) {
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const z = getViewportPointerZone(x, y);
+      if (z.up) { upHeld = true; if (gameState === 'playing') { startTimer(); startScroll(); } }
+      if (z.left) leftHeld = true;
+      if (z.right) rightHeld = true;
+    }
+    function viewportPointerUp() {
+      upHeld = false;
+      leftHeld = false;
+      rightHeld = false;
+    }
+    const vp = document.getElementById('mazeViewport');
+    if (vp) {
+      vp.addEventListener('mousedown', (e) => { e.preventDefault(); viewportPointerDown(e); });
+      vp.addEventListener('touchstart', (e) => { e.preventDefault(); viewportPointerDown(e); }, { passive: false });
+    }
+    document.addEventListener('mouseup', viewportPointerUp);
+    document.addEventListener('touchend', viewportPointerUp);
+    document.addEventListener('touchcancel', viewportPointerUp);
   </script>
 </body>
 </html>
